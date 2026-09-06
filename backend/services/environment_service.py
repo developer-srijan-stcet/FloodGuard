@@ -311,44 +311,73 @@ def _river_candidates_for_state(
 
     state = (state or "").strip().lower()
 
+    # ========================================================
+    # West Bengal
+    # ========================================================
+    #
+    # For a West Bengal location, only use datasets relevant
+    # to West Bengal. Do NOT download all Indian datasets.
+    #
+    # ========================================================
+
     if "west bengal" in state:
 
-        preferred = [
+        names = [
             "West Bengal Surface Water Subernarekha",
             "CWC Subernarekha",
         ]
 
-    elif "odisha" in state:
+    # ========================================================
+    # Odisha
+    # ========================================================
 
-        preferred = [
+    elif "odisha" in state or "orissa" in state:
+
+        names = [
             "CWC Mahanadi",
             "CWC Brahmani and Baitarni",
             "CWC Subernarekha",
         ]
 
+    # ========================================================
+    # Jharkhand
+    # ========================================================
+
     elif "jharkhand" in state:
 
-        preferred = [
+        names = [
             "CWC Subernarekha",
             "CWC Brahmani and Baitarni",
         ]
 
+    # ========================================================
+    # Other states
+    # ========================================================
+    #
+    # IMPORTANT:
+    # Don't download every dataset.
+    # Return an empty list when we don't have a known
+    # state-specific dataset.
+    #
+    # ========================================================
+
     else:
 
-        preferred = []
+        return []
 
-    rank = {
-        name: index
-        for index, name in enumerate(preferred)
-    }
+    datasets = []
 
-    return sorted(
-        RIVER_DATASETS,
-        key=lambda x: rank.get(
-            x["name"],
-            999,
-        ),
-    )
+    for name in names:
+
+        for dataset in RIVER_DATASETS:
+
+            if dataset["name"] == name:
+
+                datasets.append(dataset)
+
+                break
+
+    return datasets
 
 
 # ============================================================
