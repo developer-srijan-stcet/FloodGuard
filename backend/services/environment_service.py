@@ -130,10 +130,10 @@ def _download_river_dataset(dataset: dict[str, str]) -> pd.DataFrame:
         return cached[1]
 
     response = requests.get(
-        dataset["url"],
-        timeout=30,
-        stream=True,
-    )
+    dataset["url"],
+    timeout=(3, 5),
+    stream=True,
+)
     response.raise_for_status()
 
     # Limit the amount of data downloaded into memory.
@@ -203,31 +203,57 @@ def _extract_station_frame(df: pd.DataFrame) -> pd.DataFrame | None:
     return out
 
 
-def get_river_level(latitude: float, longitude: float, state: str | None = None) -> dict[str, Any]:
+def get_river_level(
+    latitude: float,
+    longitude: float,
+    state: str | None = None,
+) -> dict[str, Any]:
     best: dict[str, Any] | None = None
     datasets = _river_candidates_for_state(state)
 
     for dataset in datasets:
         try:
             raw = _download_river_dataset(dataset)
+
             stations = _extract_station_frame(raw)
+
             if stations is None or stations.empty:
                 continue
 
-            # Keep one recent-looking row per station. If no usable timestamp is
-            # present, use the last row in the published file.
-            date_col = _find_column(raw, ["date", "datetime", "timestamp", "time", "observation_date"])
+            date_col = _find_column(
+                raw,
+                ["date", "datetime", "timestamp", "time", "observation_date"],
+            )
+
             if date_col:
-                parsed = pd.to_datetime(raw[date_col], errors="coerce", utc=True)
+                parsed = pd.to_datetime(
+                    raw[date_col],
+                    errors="coerce",
+                    utc=True,
+                    dayfirst=True,
+                )
+
                 stations["_time"] = parsed.values
-                stations = stations.sort_values("_time").drop_duplicates(
-                    subset=["latitude", "longitude", "station"], keep="last"
+
+                stations = (
+                    stations
+                    .sort_values("_time")
+                    .drop_duplicates(
+                        subset=["latitude", "longitude", "station"],
+                        keep="last",
+                    )
                 )
 
             stations["distance_km"] = stations.apply(
-                lambda row: _haversine_km(latitude, longitude, row.latitude, row.longitude),
+                lambda row: _haversine_km(
+                    latitude,
+                    longitude,
+                    row.latitude,
+                    row.longitude,
+                ),
                 axis=1,
             )
+
             row = stations.sort_values("distance_km").iloc[0]
 
             candidate = {
@@ -240,9 +266,15 @@ def get_river_level(latitude: float, longitude: float, state: str | None = None)
                 "source": dataset["url"],
                 "dataset": dataset["name"],
             }
+
             if best is None or candidate["distance_km"] < best["distance_km"]:
                 best = candidate
-        except Exception:
+
+        except Exception as exc:
+            print(
+                f"River dataset unavailable: "
+                f"{dataset['name']} - {exc}"
+            )
             continue
 
     if best is None:
@@ -260,7 +292,6 @@ def get_river_level(latitude: float, longitude: float, state: str | None = None)
 
     best["available"] = True
     return best
-
 
 def _calculate_slope(latitude: float, longitude: float, elevations: list[float]) -> float:
     # Points are [center, north, south, east, west]. Use ~90 m offsets.
