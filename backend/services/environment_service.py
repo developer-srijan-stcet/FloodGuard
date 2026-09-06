@@ -233,7 +233,7 @@ def get_river_level(
                     dayfirst=True,
                 )
 
-                stations["_time"] = parsed.values
+                stations["_time"] = parsed.iloc[:len(stations)].to_numpy()
 
                 stations = (
                     stations
