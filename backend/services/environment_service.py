@@ -124,14 +124,47 @@ def _find_column(df: pd.DataFrame, candidates: list[str]) -> str | None:
 
 def _download_river_dataset(dataset: dict[str, str]) -> pd.DataFrame:
     now = time.time()
+
     cached = _CACHE.get(dataset["url"])
     if cached and now - cached[0] < CACHE_SECONDS:
         return cached[1]
 
-    response = requests.get(dataset["url"], timeout=60)
+    response = requests.get(
+        dataset["url"],
+        timeout=30,
+        stream=True,
+    )
     response.raise_for_status()
-    df = pd.read_csv(io.BytesIO(response.content), low_memory=False)
+
+    # Limit the amount of data downloaded into memory.
+    max_size = 50 * 1024 * 1024  # 50 MB
+
+    chunks = []
+    total_size = 0
+
+    for chunk in response.iter_content(chunk_size=1024 * 1024):
+        if not chunk:
+            continue
+
+        total_size += len(chunk)
+
+        if total_size > max_size:
+            response.close()
+            raise RuntimeError(
+                f"River dataset is too large: {dataset['name']}"
+            )
+
+        chunks.append(chunk)
+
+    content = b"".join(chunks)
+
+    df = pd.read_csv(
+        io.BytesIO(content),
+        low_memory=True,
+    )
+
     _CACHE[dataset["url"]] = (now, df)
+
     return df
 
 
